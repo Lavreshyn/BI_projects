@@ -1,0 +1,59 @@
+    --Table with brands_search in 'manufacturer' part of filter:
+WITH
+table1 AS
+(
+SELECT
+  PARSE_DATE('%Y%m%d', event_date) date,
+  SPLIT(JSON_EXTRACT_SCALAR(event_params.value.string_value, '$.option'), '#')[OFFSET(1)] AS brand,
+  LEFT(device.web_info.hostname, 2) country
+FROM `fc-ecom-prod.analytics_313640305.events_intraday_*`,
+  UNNEST(event_params) AS event_params
+WHERE
+  _table_suffix > '20240213'
+  AND event_name = 'add_filter'
+  AND event_params.key = 'event_context'
+  AND JSON_EXTRACT_SCALAR(event_params.value.string_value, '$.filter') = 'manufacturer#manufacturer'
+),
+
+    --Table with brands_search in 'product' part of filter:
+table2 AS
+(
+SELECT
+  PARSE_DATE('%Y%m%d', event_date) date,
+  JSON_EXTRACT_SCALAR(event_params.value.string_value, '$.products[0].brand') brand,
+  LEFT(device.web_info.hostname, 2) country
+FROM `fc-ecom-prod.analytics_313640305.events_intraday_*`,
+  UNNEST(event_params) AS event_params
+    WHERE
+    _table_suffix > '20240213'
+    AND event_name = 'add_filter'
+    AND event_params.key = 'event_context'
+    AND json_extract_scalar(event_params.value.string_value, '$.products[0].brand') IS NOT NULL
+)
+
+    --Final SELECTion of the most searched brands on site:
+SELECT 
+  date,
+  brand,
+  country,
+  COUNT(brand) number
+FROM
+    (
+    SELECT
+      table1.date,
+      table1.brand,
+      table1.country
+        FROM table1
+      UNION ALL
+    SELECT
+      table2.date,
+      table2.brand,
+      table2.country
+        FROM table2
+    )
+GROUP BY
+  date,
+  brand,
+  country
+ORDER BY
+  number DESC
